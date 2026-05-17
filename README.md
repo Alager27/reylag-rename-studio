@@ -63,3 +63,9 @@ ReyLag Rename Studio está optimizado para integrarse de forma nativa en sistema
 El núcleo multimedia y gráfico se apoya directamente en las librerías oficiales de tu distribución. Asegúrate de tenerlas instaladas ejecutando:
 ```bash
 sudo pacman -S python qt6-multimedia qt6-base ffmpeg
+
+# Entra en la carpeta del empaquetador oficial
+cd reylag-rename-studio/arch-package
+
+# Compila el binario e instala resolviendo dependencias y limpiando conflictos anteriores
+makepkg -fsi
