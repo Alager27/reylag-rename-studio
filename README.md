@@ -53,7 +53,7 @@ Además del flujo de trabajo individual, la suite cuenta con un motor secundario
 
 ---
 
-## 🛠️ Requisitos e Instalación (Arch Linux / EndeavourOS)
+## 🛠️ Requisitos e Instalación (Arch Linux)
 
 ReyLag Rename Studio está optimizado para integrarse de forma nativa en sistemas Linux modernos (Wayland/X11) bajo el entorno de escritorio **KDE Plasma**. 
 
