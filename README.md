@@ -8,7 +8,7 @@ Olvídate de abrir y cerrar reproductores externos o pelear con el explorador de
 
 ## 📸 Vista de la Aplicación
 
-![Interfaz de ReyLag Rename Studio](https://raw.githubusercontent.com/Alager27/reylag-rename-studio/main/screenshot.png)
+![Interfaz de ReyLag Rename Studio](screenshot.png)
 
 ---
 
@@ -72,11 +72,8 @@ sudo pacman -S python qt6-multimedia qt6-base ffmpeg
 
 🔨 2. Compilación y Empaquetado Nativo
 
-El repositorio incluye un entorno de empaquetado oficial optimizado con soporte para los menús del sistema e iconos en alta resolución.
+Como los archivos de empaquetado están directamente en la raíz de tu repositorio, el proceso se simplifica:
 Bash
-
-# Entra en la carpeta del empaquetador oficial donde reside el PKGBUILD
-cd reylag-rename-studio/arch-package
 
 # Compila el paquete nativo, resuelve dependencias e instala limpiando conflictos previos
 makepkg -fsi
