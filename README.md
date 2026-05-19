@@ -8,7 +8,7 @@ Olvídate de abrir y cerrar reproductores externos o pelear con el explorador de
 
 ## 📸 Vista de la Aplicación
 
-![Interfaz de ReyLag Rename Studio](https://raw.githubusercontent.com/Alager27/reylag-rename-studio/main/arch-package/screenshot_placeholder.png)
+![Interfaz de ReyLag Rename Studio](https://raw.githubusercontent.com/Alager27/reylag-rename-studio/main/screenshot.png)
 
 ---
 
