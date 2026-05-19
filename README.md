@@ -6,6 +6,12 @@ Olvídate de abrir y cerrar reproductores externos o pelear con el explorador de
 
 ---
 
+## 📸 Vista de la Aplicación
+
+![Interfaz de ReyLag Rename Studio](https://raw.githubusercontent.com/Alager27/reylag-rename-studio/main/arch-package/screenshot_placeholder.png)
+
+---
+
 ## 🚀 ¿Por qué usar ReyLag Rename Studio?
 
 Cuando llegas de un rodaje, un evento o una sesión de grabación, te enfrentas a carpetas llenas de archivos con nombres genéricos (`0001.mp4`, `DSC_0594.mov`). Renombrarlos uno a uno para tu software de edición (Premiere, DaVinci, Final Cut) es lento y propenso a errores. 
@@ -42,14 +48,14 @@ La interfaz está diseñada estratégicamente para que puedas catalogar y proces
 
 ---
 
-## ⚙️ Modos de Renombrado en Lote
+## ⚙️ Modos de Renombrado en Lote (Procesamiento Masivo)
 
-Además del flujo de trabajo individual, la suite cuenta con un motor secundario para procesar colas de trabajo masivas:
+Además del flujo de trabajo manual e individual, la aplicación incorpora un potente motor secundario automatizado para procesar colas de trabajo masivas sobre múltiples archivos simultáneamente:
 
-1. **Formato Secuencial:** Renombra con numeración automática (ej. `Proyecto_Final_001`, `Proyecto_Final_002`).
-2. **Reemplazar Cadena:** Busca una palabra o prefijo erróneo en decenas de archivos y lo sustituye de golpe.
-3. **Añadir Texto:** Inserta prefijos o sufijos en bloque (ej. añadir el tag `_PROXY` o `_4K` a todos los elementos seleccionados).
-4. **Limpieza Avanzada:** Normalización automática de espacios dobles, eliminación de caracteres especiales incompatibles y control estricto de capitalización (Mayúsculas/Minúsculas).
+* **🔢 Formato Secuencial (Numeración):** Permite renombrar colecciones enteras aplicando un prefijo común y un índice numérico correlativo configurable (ej. transformar una ráfaga en `Boda_Postigo_001.mp4`, `Boda_Postigo_002.mp4`, `Boda_Postigo_003.mp4`).
+* **🔄 Reemplazar Texto / Cadenas:** Escanea los nombres de los archivos seleccionados, localiza un patrón de texto específico, un error o un tag molesto y lo sustituye por la palabra que decidas de una sola pasada.
+* **➕ Añadir Texto (Prefijos y Sufijos):** Inyecta texto de manera masiva al inicio o al final de los nombres existentes sin alterar el resto del identificador (ej. añadir el sufijo `_PROXY` o el prefijo `4K_` a 50 clips a la vez).
+* **🧹 Limpieza Avanzada de Strings:** Corrección automatizada que purga de golpe espacios dobles o huérfanos, elimina caracteres especiales incompatibles con sistemas de archivos y ofrece control estricto de capitalización (convertir todo a Mayúsculas, Minúsculas o formato Tipo Título).
 
 ---
 
@@ -64,8 +70,24 @@ El núcleo multimedia y gráfico se apoya directamente en las librerías oficial
 ```bash
 sudo pacman -S python qt6-multimedia qt6-base ffmpeg
 
-# Entra en la carpeta del empaquetador oficial
+🔨 2. Compilación y Empaquetado Nativo
+
+El repositorio incluye un entorno de empaquetado oficial optimizado con soporte para los menús del sistema e iconos en alta resolución.
+Bash
+
+# Entra en la carpeta del empaquetador oficial donde reside el PKGBUILD
 cd reylag-rename-studio/arch-package
 
-# Compila el binario e instala resolviendo dependencias y limpiando conflictos anteriores
+# Compila el paquete nativo, resuelve dependencias e instala limpiando conflictos previos
 makepkg -fsi
+
+🖥️ Cómo Ejecutar la Aplicación
+
+Una vez completado el paso de pacman, la aplicación queda completamente integrada en la jerarquía de tu sistema operativo:
+
+    Desde el Escritorio: Pulsa la tecla Super (o abre tu lanzador KRunner), escribe ReyLag Rename Studio y haz clic sobre su icono oficial para iniciar la interfaz gráfica.
+
+    Desde la Terminal: Invoca la aplicación de forma global desde cualquier ruta ejecutando:
+    Bash
+
+    reylag-rename-studio
