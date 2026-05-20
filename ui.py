@@ -7,13 +7,14 @@ from PyQt6.QtWidgets import (
     QFrame, QSlider, QToolButton, QStatusBar, QCheckBox,
     QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
     QCompleter, QSizePolicy, QGraphicsScene, QGraphicsView,
-    QDialog, QInputDialog, QMessageBox, QTextEdit
+    QDialog, QInputDialog, QMessageBox, QTextEdit,
+    QTreeView, QMenu
 )
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput
 from PyQt6.QtMultimediaWidgets import QGraphicsVideoItem
-from PyQt6.QtGui import QIcon, QFont, QPainter, QColor, QPen, QBrush, QPixmap, QTextCursor, QTextDocument
+from PyQt6.QtGui import QIcon, QFont, QPainter, QColor, QPen, QBrush, QPixmap, QTextCursor, QTextDocument, QFileSystemModel
 from PyQt6.QtWidgets import QSplashScreen
-from PyQt6.QtCore import Qt, QSize, QStringListModel, QTimer
+from PyQt6.QtCore import Qt, QSize, QStringListModel, QTimer, QDir
 
 
 
@@ -40,7 +41,7 @@ class VideoRenamerUI:
         
         self.translations = {
             "es": {
-                "step1": "1. EXPLORADOR", "step2": "2. VISOR VIDEO", "step3": "3. ACCIÓN REAL",
+                "step1": "1. EXPLORADOR", "step2": "2. VISOR VIDEO", "step3": "3. Renombrado en Lotes",
                 "open_dir": "Abrir Carpeta", "filter": "🔍 Filtrar archivos...",
                 "group_edit": "Edición de Nombre Seleccionado", "btn_apply": " Actualizar Nombre en la Lista",
                 "group_rules": "Reglas de Renombrado", "execute": "EJECUTAR EN DISCO",
@@ -49,7 +50,7 @@ class VideoRenamerUI:
                 "refresh": "Actualizar lista"
             },
             "en": {
-                "step1": "1. EXPLORER", "step2": "2. VIDEO VIEWER", "step3": "3. EXECUTE ACTION",
+                "step1": "1. EXPLORER", "step2": "2. VIDEO VIEWER", "step3": "3. Batch Renaming",
                 "open_dir": "Open Folder", "filter": "🔍 Filter files...",
                 "group_edit": "Selected Item Metadata", "btn_apply": " Update Name in List",
                 "group_rules": "Renaming Rules", "execute": "RUN RENAMER",
@@ -58,7 +59,7 @@ class VideoRenamerUI:
                 "refresh": "Refresh list"
             },
             "gl": {
-                "step1": "1. EXPLORADOR", "step2": "2. VISOR VIDEO", "step3": "3. ACCIÓN REAL",
+                "step1": "1. EXPLORADOR", "step2": "2. VISOR VIDEO", "step3": "3. Renomeado en Lotes",
                 "open_dir": "Abrir Carpeta", "filter": "🔍 Filtrar arquivos...",
                 "group_edit": "Edición de Nome Seleccionado", "btn_apply": " Actualizar Nome na Lista",
                 "group_rules": "Regras de Renomeado", "execute": "EXECUTAR EN DISCO",
@@ -88,6 +89,9 @@ class VideoRenamerUI:
         self.edit_menu.addSeparator()
         self.action_clear = self.edit_menu.addAction(QIcon.fromTheme("edit-clear-list"), "Limpiar lista")
 
+        # --- DICCIONARIO MENÚ ---
+        self.construir_barra_menus()
+
         # Menú Preferencias
         self.pref_menu = self.menu_bar.addMenu("&Preferencias")
         self.lang_menu = self.pref_menu.addMenu(QIcon.fromTheme("preferences-desktop-locale"), "Idioma")
@@ -99,6 +103,16 @@ class VideoRenamerUI:
         for action in [self.action_lang_es, self.action_lang_en, self.action_lang_gl]:
             action.setCheckable(True)
         self.action_lang_es.setChecked(True)
+
+    def construir_barra_menus(self):
+        """Genera el menú superior dinámico con las opciones de control del diccionario."""
+        self.menu_diccionario = QMenu("Diccionario", self.main_window)
+        
+        self.action_importar = self.menu_diccionario.addAction("📥 Importar Diccionario (.txt)")
+        self.action_exportar = self.menu_diccionario.addAction("📤 Exportar Diccionario Activo")
+        self.action_editar = self.menu_diccionario.addAction("📝 Editar Diccionario en Editor Nativo")
+        
+        self.menu_bar.addMenu(self.menu_diccionario)
 
     def setup_ui(self):
         # Inicializamos las etiquetas de pasos para que el traductor las encuentre siempre
@@ -134,9 +148,14 @@ class VideoRenamerUI:
         self.btn_refresh.setFixedWidth(40)
         self.btn_refresh.setCursor(Qt.CursorShape.PointingHandCursor)
         self.btn_refresh.setToolTip("Actualizar lista de archivos")
+
+        self.btn_limpiar_explorador = QPushButton("🧹 Limpiar Explorador")
+        self.btn_limpiar_explorador.setToolTip("Restablecer la vista raíz del explorador")
+        self.btn_limpiar_explorador.setCursor(Qt.CursorShape.PointingHandCursor)
         
         layout_botones_carpeta.addWidget(self.btn_open)
         layout_botones_carpeta.addWidget(self.btn_refresh)
+        layout_botones_carpeta.addWidget(self.btn_limpiar_explorador)
         layout_explorer.addLayout(layout_botones_carpeta)
 
         self.edit_filter = QLineEdit()
@@ -144,12 +163,42 @@ class VideoRenamerUI:
         self.edit_filter.setClearButtonEnabled(True)
         layout_explorer.addWidget(self.edit_filter)
         
+        # --- REQUERIMIENTO 2: Cambiar a Navegación Estructurada de Carpetas ---
+        self.model_explorador = QFileSystemModel()
+        self.model_explorador.setFilter(QDir.Filter.AllDirs | QDir.Filter.Files | QDir.Filter.NoDotAndDotDot)
+        self.model_explorador.setNameFilters(['*.mp4', '*.mkv', '*.avi', '*.mov', '*.webm', '*.m4v'])
+        self.model_explorador.setNameFilterDisables(False)
+
+        self.tree_explorador = QTreeView()
+        self.tree_explorador.setModel(self.model_explorador)
+        self.tree_explorador.setAnimated(True)
+        self.tree_explorador.setIndentation(20)
+        self.tree_explorador.setSortingEnabled(True)
+        self.tree_explorador.setDragEnabled(True)
+        self.tree_explorador.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        self.tree_explorador.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        
+        # Ocultamos columnas innecesarias
+        self.tree_explorador.setColumnWidth(0, 250)
+        for i in range(1, 4):
+            self.tree_explorador.hideColumn(i)
+            # --- NUEVO: Habilitar Scroll Horizontal ---
+            # 1. Desactivamos el estiramiento forzado
+            self.tree_explorador.header().setStretchLastSection(False)
+            # 2. Hacemos que la columna 0 (nombres) crezca según el texto más largo
+            self.tree_explorador.header().setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+            # 3. Forzamos la barra horizontal automática
+            self.tree_explorador.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+
+        # Set default path to user home folder
+        home_dir = QDir.homePath()
+        self.model_explorador.setRootPath(home_dir)
+        self.tree_explorador.setRootIndex(self.model_explorador.index(home_dir))
+        
+        layout_explorer.addWidget(self.tree_explorador)
+
+        # Mantenemos list_files inicializado para compatibilidad
         self.list_files = QListWidget()
-        self.list_files.setAlternatingRowColors(True)
-        self.list_files.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
-        self.list_files.setSelectionMode(QListWidget.SelectionMode.ExtendedSelection)
-        self.list_files.setDragEnabled(True)
-        layout_explorer.addWidget(self.list_files)
 
         # 3. AHORA SÍ: Añadir el grupo al layout que ya existe
         self.left_layout.addWidget(group_explorer)
@@ -379,11 +428,22 @@ class VideoRenamerUI:
         self.table_batch.setDragDropMode(QAbstractItemView.DragDropMode.DropOnly)
         self.table_batch.setStyleSheet("font-family: 'JetBrains Mono', 'Monospace'; font-size: 9pt;")
 
+        # Layout para los botones de limpieza de la cola
+        layout_botones_cola = QHBoxLayout()
         self.btn_clear_batch = QPushButton(" Quitar todos")
         self.btn_clear_batch.setIcon(QIcon.fromTheme("edit-delete"))
+        self.btn_clear_batch.setCursor(Qt.CursorShape.PointingHandCursor)
+
+        self.btn_limpiar_lotes = QPushButton("🧹 Limpiar Cola")
+        self.btn_limpiar_lotes.setToolTip("Vacía por completo la lista de renombrado masivo")
+        self.btn_limpiar_lotes.setCursor(Qt.CursorShape.PointingHandCursor)
+        
+        layout_botones_cola.addWidget(self.btn_clear_batch)
+        layout_botones_cola.addWidget(self.btn_limpiar_lotes)
 
         self.btn_reset = QPushButton(" Limpiar Reglas")
         self.btn_reset.setIcon(QIcon.fromTheme("edit-clear"))
+        self.btn_reset.setCursor(Qt.CursorShape.PointingHandCursor)
 
         self.btn_execute = QPushButton(" EJECUTAR EN DISCO")
         self.btn_execute.setIcon(QIcon.fromTheme("dialog-ok-apply"))
@@ -396,7 +456,7 @@ class VideoRenamerUI:
         right_layout.addWidget(self.btn_reset)
         right_layout.addWidget(self.lbl_preview)
         right_layout.addWidget(self.table_batch)
-        right_layout.addWidget(self.btn_clear_batch)
+        right_layout.addLayout(layout_botones_cola)
         right_layout.addWidget(self.btn_execute)
 
         self.splitter.addWidget(self.left_widget)
@@ -407,6 +467,24 @@ class VideoRenamerUI:
 
         self.status_bar = QStatusBar()
         self.main_window.setStatusBar(self.status_bar)
+
+        # --- REQUERIMIENTO 4: Botón de Ko-fi Estilizado ---
+        self.btn_kofi = QPushButton("☕ Invitar a un café")
+        self.btn_kofi.setStyleSheet("""
+            QPushButton {
+                background-color: #2d5a88;
+                color: #ffffff;
+                font-weight: bold;
+                border: none;
+                border-radius: 5px;
+                padding: 6px 12px;
+            }
+            QPushButton:hover { background-color: #3b73ad; }
+            QPushButton:pressed { background-color: #1f4266; }
+        """)
+        self.btn_kofi.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.status_bar.addPermanentWidget(self.btn_kofi)
+
         self.status_bar.showMessage("Listo para organizar.", 5000)
 
         # Setup Multimedia

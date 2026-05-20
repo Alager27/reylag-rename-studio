@@ -40,7 +40,8 @@ from PyQt6.QtWidgets import (
     QProgressDialog, QMenu, QDialog, QVBoxLayout, QTableWidget,
     QTableWidgetItem, QHeaderView, QTextEdit, QPushButton
 )
-from PyQt6.QtCore import Qt, QUrl, QTime, QThread, pyqtSignal, QSettings, QTimer, QSizeF
+from datetime import datetime
+from PyQt6.QtCore import Qt, QUrl, QTime, QThread, pyqtSignal, QSettings, QTimer, QSizeF, QDir
 from PyQt6.QtGui import QIcon, QFont, QDesktopServices, QShortcut, QKeySequence, QSurfaceFormat, QFontDatabase
 
 # Configuración de Logging
@@ -106,10 +107,11 @@ class MainWindow(QMainWindow):
         self.connect_signals()
 
         # 4. Resto de configuraciones (Historial, portapapeles, etc.)
+        self.view.tree_explorador.installEventFilter(self)
         self.view.list_files.installEventFilter(self)
         
         self.rename_history = set()
-        self.dict_path = os.path.expanduser("~/.config/reylag_diccionario.txt")
+        self.dict_path = self.engine.ruta_diccionario
         os.makedirs(os.path.dirname(self.dict_path), exist_ok=True)
         self.load_dictionary_from_disk()
 
@@ -145,10 +147,21 @@ class MainWindow(QMainWindow):
         self.view.action_lang_en.triggered.connect(lambda _: self.on_change_language("en"))
         self.view.action_lang_gl.triggered.connect(lambda _: self.on_change_language("gl"))
 
+        # Conexiones del menú Diccionario
+        self.view.action_importar.triggered.connect(self.ejecutar_importacion)
+        self.view.action_exportar.triggered.connect(self.ejecutar_exportacion)
+        self.view.action_editar.triggered.connect(self.abrir_editor_sistema_nativo)
+
         # Explorador
         self.view.btn_open.clicked.connect(self.on_open_directory)
         self.view.btn_refresh.clicked.connect(self.on_refresh_directory) # NUEVO CONECTOR
         self.view.edit_filter.textChanged.connect(self.filter_list)
+        
+        # Conexión del explorador de carpetas recursivo y botones Limpiar
+        self.view.tree_explorador.clicked.connect(self.on_elemento_explorador_clicked)
+        self.view.btn_limpiar_explorador.clicked.connect(self.limpiar_explorador_raiz)
+        self.view.btn_limpiar_lotes.clicked.connect(self.on_clear_batch)
+        
         # self.view.list_files.itemDoubleClicked.connect(self.on_item_double_clicked)
         # NUEVO: Restauramos la conexión de selección simple
         self.view.list_files.itemSelectionChanged.connect(self.on_simple_selection)
@@ -159,6 +172,9 @@ class MainWindow(QMainWindow):
         self.view.btn_apply_name.clicked.connect(self.on_apply_individual)
         self.view.edit_name.returnPressed.connect(self.on_apply_individual)
         self.view.btn_dict.clicked.connect(self.open_dictionary_manager)
+        
+        # Conexión del detector anticolisiones en tiempo real (Color Rojo)
+        self.view.edit_name.textChanged.connect(self.validar_nombre_en_tiempo_real)
 
         # Motor de Renombrado (Instant Preview)
         self.view.combo_mode.currentIndexChanged.connect(self.on_mode_changed)
@@ -187,8 +203,6 @@ class MainWindow(QMainWindow):
         self.view.slider_zoom.valueChanged.connect(self.apply_zoom)
         self.view.btn_fullscreen.clicked.connect(self.toggle_fullscreen)
         self.view.video_item.nativeSizeChanged.connect(self.on_video_size_changed)
-        # La señal fullScreenChanged no existe en QGraphicsView por defecto, 
-        # así que la lógica de iconos del botón la manejaremos directamente en toggle_fullscreen.
 
         # Audio
         self.view.btn_mute.clicked.connect(self.toggle_mute)
@@ -210,6 +224,10 @@ class MainWindow(QMainWindow):
 
         # Menú Contextual
         self.view.list_files.customContextMenuRequested.connect(self.show_context_menu)
+        self.view.tree_explorador.customContextMenuRequested.connect(self.show_context_menu)
+        
+        # Conexión Botón Ko-fi
+        self.view.btn_kofi.clicked.connect(self.abrir_enlace_kofi)
 
         self.setup_shortcuts()
 
@@ -236,7 +254,10 @@ class MainWindow(QMainWindow):
                 self, "Restaurar sesión", f"¿Deseas volver a abrir esta carpeta?\n\n{last_dir}",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
             if reply == QMessageBox.StandardButton.Yes:
-                self.load_path(last_dir)
+                # Cargamos la carpeta guardada sin usar load_path para evitar recargar UI innecesariamente
+                self.view.model_explorador.setRootPath(last_dir)
+                self.view.tree_explorador.setRootIndex(self.view.model_explorador.index(last_dir))
+                self.engine.directory = last_dir
             else:
                 self.settings.remove("last_directory")
         
@@ -257,53 +278,14 @@ class MainWindow(QMainWindow):
             self.settings.setValue("suggestions", self.view.suggestions)
 
     def load_dictionary_from_disk(self):
-        """Despierta el diccionario leyendo el historial guardado en disco.
-           Si es el primer inicio, copia un diccionario base de fábrica."""
-
-        # 1. SI ES LA PRIMERA VEZ: Intentamos instalar el "Starter Kit"
-        if not os.path.exists(self.dict_path):
-            import shutil
-            default_dic = resource_path("diccionario_por_defecto.txt")
-            if os.path.exists(default_dic):
-                try:
-                    shutil.copy(default_dic, self.dict_path)
-                    print("Primer inicio detectado: Diccionario de fábrica instalado.")
-                except Exception as e:
-                    print(f"Error al instalar el diccionario base: {e}")
-            else:
-                print("Primer inicio: No se encontró diccionario base, iniciando vacío.")
-
-        # 2. CARGAMOS EL DICCIONARIO (ya sea el antiguo o el recién copiado)
-        if os.path.exists(self.dict_path):
-            try:
-                with open(self.dict_path, 'r', encoding='utf-8') as f:
-                    words = [
-                        line.strip() for line in f
-                        if line.strip() and not line.strip().startswith('#')
-                    ]
-                    self.rename_history.update(words)
-                    self.engine.custom_vocabulary.update(words)
-                print(f"Diccionario cargado con {len(words)} palabras.")
-            except Exception as e:
-                print(f"Error al cargar el diccionario: {e}")
-
-        # 3. Refrescamos la UI para que el autocompletado ya sepa las palabras
+        """Despierta el diccionario leyendo el historial guardado en disco."""
+        self.engine.cargar_diccionario()
+        self.rename_history.update(self.engine.diccionario)
         self.update_completer_suggestions()
 
     def save_dictionary_to_disk(self):
         """Guarda el vocabulario actual en el disco sin duplicados y ordenado."""
-        # 1. Obtenemos el vocabulario limpio y sin duplicados del motor
-        clean_vocab = self.engine.get_suggestions_vocabulary()
-
-        # 2. Sobrescribimos el archivo completo (usamos 'w' en lugar de 'a')
-        try:
-            with open(self.dict_path, 'w', encoding='utf-8') as f:
-                for word in clean_vocab:
-                    if word.strip():  # Evitamos guardar líneas en blanco
-                        f.write(word.strip() + '\n')
-            print("Diccionario guardado y optimizado con éxito.")
-        except Exception as e:
-            print(f"Error al guardar el diccionario: {e}")
+        self.engine.guardar_diccionario_ordenado(self.engine.diccionario)
 
     def open_dictionary_manager(self):
         """Abre la ventana flotante con el editor libre y el buscador en tiempo real."""
@@ -324,34 +306,20 @@ class MainWindow(QMainWindow):
         super().closeEvent(event)
 
     def on_open_directory(self):
-        home_dir = os.path.expanduser("~")
+        # 1. Abre la ventana nativa para que elijas la carpeta principal
+        from PyQt6.QtWidgets import QFileDialog
+        carpeta = QFileDialog.getExistingDirectory(self, "Seleccionar Carpeta de Trabajo")
         
-        # 1. Creamos el diálogo de forma segura pasándole el directorio real
-        dialog = QFileDialog(self, "Seleccionar Carpeta", home_dir)
-        dialog.setOption(QFileDialog.Option.DontUseNativeDialog, True)
-        dialog.setFileMode(QFileDialog.FileMode.Directory)
-        
-        # 2. Obtenemos los accesos directos que ya tiene por defecto
-        urls = dialog.sidebarUrls()
-        
-        # 3. Añadimos la carpeta de Descargas
-        descargas = os.path.join(home_dir, "Descargas")
-        if not os.path.exists(descargas): # Por si tu sistema está en inglés
-            descargas = os.path.join(home_dir, "Downloads")
-        urls.append(QUrl.fromLocalFile(descargas))
-        
-        # 4. Añadimos la ruta a los Discos Externos
-        media_path = f"/run/media/{os.getlogin()}"
-        if os.path.exists(media_path):
-            urls.append(QUrl.fromLocalFile(media_path))
+        if carpeta:
+            # 2. Le decimos al modelo de datos que analice esa ruta
+            self.view.model_explorador.setRootPath(carpeta)
             
-        # 5. Aplicamos los nuevos accesos directos
-        dialog.setSidebarUrls(urls)
-
-        # 6. Lanzamos el diálogo
-        if dialog.exec():
-            path = dialog.selectedFiles()[0]
-            self.load_path(path)
+            # 3. ¡AQUÍ ESTÁ LA MAGIA! Bloqueamos el visor para que la raíz visual sea esa carpeta
+            # Así no se verá ni el "Home" ni el resto de tu disco duro, solo la carpeta y sus subcarpetas.
+            self.view.tree_explorador.setRootIndex(self.view.model_explorador.index(carpeta))
+            
+            # 4. Sincronizamos la ruta con el motor interno
+            self.engine.directory = carpeta
 
     def on_refresh_directory(self):
         import os
@@ -485,62 +453,148 @@ class MainWindow(QMainWindow):
 
                 url = QUrl.fromLocalFile(os.path.abspath(ruta_completa))
                 self.view.media_player.setSource(url)
-
-                # Retardo táctico de 100ms para asegurar el buffer, pero forzamos PAUSA
-                # Esto carga el primer fotograma (miniatura) sin saturar la decodificación de la GPU
+                # Guardamos nombre base y extensión para la validación anticolisión
+                filename = os.path.basename(ruta_completa)
+                base_name, ext = os.path.splitext(filename)
+                self.nombre_base_actual = base_name
+                self.extension_video_actual = ext
+                # Reiniciamos estilo por si venía de un error previo
+                self.view.edit_name.setStyleSheet("")       
                 QTimer.singleShot(100, self.view.media_player.pause)
             else:
                 self.view.status_bar.showMessage(f"Formato no reproducible: {os.path.basename(ruta_completa)}", 3000)
-
         except Exception as e:
-            self.view.status_bar.showMessage(f"Error de lectura: {os.path.basename(ruta_completa)}", 3000)
-            logging.error(f"Excepción grave en load_video: {e}")
+            logging.error(f"Error al cargar video: {e}")
+
+    def limpiar_explorador_raiz(self):
+        """Oculta todo y deja el explorador visualmente vacío hasta que abras otra carpeta."""
+        # Al pasarle un índice vacío, el árbol colapsa y no muestra nada
+        self.view.tree_explorador.setRootIndex(self.view.model_explorador.index(""))
+        self.engine.directory = ""
+
+    def validar_nombre_en_tiempo_real(self, texto_actual):
+        """Cambia el texto a rojo brillante si el nombre ya existe, ignorando el archivo actual."""
+        try:
+            texto_limpio = texto_actual.strip()
+            # 1. Si la caja está vacía, quitamos el rojo y no hacemos nada más
+            if not texto_limpio:
+                self.view.edit_name.setStyleSheet("")
+                return
+            # 2. Recuperamos los datos del vídeo actual
+            ext_actual = ""
+            nombre_original = getattr(self, "nombre_base_actual", "")
+            # 3. Determinamos la extensión del archivo seleccionado
+            indexes = self.view.tree_explorador.selectedIndexes()
+            if indexes:
+                ruta_absoluta = self.view.model_explorador.filePath(indexes[0])
+                if os.path.isfile(ruta_absoluta):
+                    ext_actual = os.path.splitext(ruta_absoluta)[1]
+            else:
+                row = self.view.list_files.currentRow()
+                if 0 <= row < len(self.engine.files_state):
+                    ext_actual = self.engine.files_state[row].get("ext", "")
+            # 4. Si el nombre introducido coincide con el nombre original del vídeo, no hay colisión
+            if texto_limpio == nombre_original:
+                self.view.edit_name.setStyleSheet("")
+                return
+            # 5. Evaluamos colisión contra diccionario y disco
+            duplicado_diccionario = texto_limpio in self.engine.diccionario
+            duplicado_disco = self.engine.nombre_ya_existe_en_disco(texto_limpio, ext_actual)
+            if duplicado_diccionario or duplicado_disco:
+                self.view.edit_name.setStyleSheet("color: #ff4444; font-weight: bold; background-color: #2a1a1a;")
+            else:
+                self.view.edit_name.setStyleSheet("")
+        except Exception as e:
+            self.view.status_bar.showMessage("Error al validar nombre.", 3000)
+            logging.error(f"Excepción grave en validar_nombre_en_tiempo_real: {e}")
 
     def on_apply_individual(self):
-        row = self.view.list_files.currentRow()
-        if row < 0 or row >= len(self.engine.files_state):
-            return
-            
         new_name = self.view.edit_name.text().strip()
-        current_name = self.engine.files_state[row]['current']
-        
-        # 1. Si presionas Enter sin haber cambiado nada, simplemente saltamos al siguiente
-        if new_name == current_name:
-            self.go_to_next_row(row)
+        if not new_name:
             return
+
+        indexes = self.view.tree_explorador.selectedIndexes()
+        if indexes:
+            # Seleccionado en árbol explorer recursivo
+            index = indexes[0]
+            ruta_absoluta = self.view.model_explorador.filePath(index)
+            if os.path.isdir(ruta_absoluta):
+                return
+                
+            dir_name, old_filename = os.path.split(ruta_absoluta)
+            ext = os.path.splitext(old_filename)[1]
             
-        # 2. ESCUDO ANTICOLISIONES: Verificamos si el nombre ya existe en la lista
-        # Comparamos en minúsculas por seguridad extra
-        nombre_existe = any(f['current'].lower() == new_name.lower() for f in self.engine.files_state)
-        
-        if nombre_existe:
-            QMessageBox.warning(self, "Nombre Duplicado", f"Ya existe un archivo llamado:\n\n'{new_name}'\n\nPor favor, usa un nombre distinto para evitar perder datos.")
-            self.view.edit_name.setFocus()
-            self.view.edit_name.selectAll()
-            return
-
-        # 3. Si pasó las defensas, procedemos a renombrar
-        self.view.media_player.stop()
-        success, msg = self.engine.rename_single_file(row, new_name)
-        if success:
-            import os
-            nombre_sin_ext = os.path.splitext(new_name)[0].strip()
-
-            if nombre_sin_ext and nombre_sin_ext not in self.rename_history:
-                self.rename_history.add(nombre_sin_ext)
-
-            # Persistir en disco de forma limpia (sobrescribe sin duplicados)
-            self.save_dictionary_to_disk()
-
-            # Añadir al vocabulario del motor y refrescar el completer
-            self.engine.add_to_vocabulary(nombre_sin_ext)
-            self.update_completer_suggestions()
-
-            self.refresh_ui_list()
-            self.go_to_next_row(row)
-            self.update_preview()
+            # Asegurar la extensión correcta
+            if not new_name.lower().endswith(self.engine.video_extensions):
+                new_name = new_name + ext
+                
+            if old_filename == new_name:
+                self.go_to_next_tree_item()
+                return
+                
+            new_path = os.path.join(dir_name, new_name)
+            
+            if os.path.exists(new_path):
+                QMessageBox.warning(self, "Nombre Duplicado", f"Ya existe un archivo llamado:\n\n'{new_name}'\n\nPor favor, usa un nombre distinto para evitar perder datos.")
+                self.view.edit_name.setFocus()
+                self.view.edit_name.selectAll()
+                return
+                
+            self.view.media_player.stop()
+            self.view.media_player.setSource(QUrl())
+            
+            try:
+                os.rename(ruta_absoluta, new_path)
+                
+                # Registrar en historial
+                self.engine.history_log.append({
+                    'timestamp': datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+                    'old': old_filename,
+                    'new': new_name
+                })
+                
+                # Añadir palabra al vuelo
+                nombre_sin_ext = os.path.splitext(new_name)[0].strip()
+                self.engine.agregar_palabra_al_vuelo(nombre_sin_ext)
+                self.update_completer_suggestions()
+                
+                self.view.status_bar.showMessage(f"Renombrado con éxito: {new_name}", 5000)
+                
+                # Seleccionar el siguiente en el árbol
+                self.go_to_next_tree_item()
+            except Exception as e:
+                QMessageBox.critical(self, "Error al Renombrar", f"Fallo al renombrar {old_filename}: {str(e)}")
         else:
-            QMessageBox.critical(self, "Error al Renombrar", msg)
+            # Selección legacy en list_files
+            row = self.view.list_files.currentRow()
+            if row < 0 or row >= len(self.engine.files_state):
+                return
+                
+            current_name = self.engine.files_state[row]['current']
+            
+            if new_name == current_name:
+                self.go_to_next_row(row)
+                return
+                
+            nombre_existe = any(f['current'].lower() == new_name.lower() for f in self.engine.files_state)
+            
+            if nombre_existe:
+                QMessageBox.warning(self, "Nombre Duplicado", f"Ya existe un archivo llamado:\n\n'{new_name}'\n\nPor favor, usa un nombre distinto para evitar perder datos.")
+                self.view.edit_name.setFocus()
+                self.view.edit_name.selectAll()
+                return
+     
+            self.view.media_player.stop()
+            success, msg = self.engine.rename_single_file(row, new_name)
+            if success:
+                nombre_sin_ext = os.path.splitext(new_name)[0].strip()
+                self.engine.agregar_palabra_al_vuelo(nombre_sin_ext)
+                self.update_completer_suggestions()
+                self.refresh_ui_list()
+                self.go_to_next_row(row)
+                self.update_preview()
+            else:
+                QMessageBox.critical(self, "Error al Renombrar", msg)
 
     def filter_list(self, text):
         search_text = text.lower()
@@ -553,11 +607,17 @@ class MainWindow(QMainWindow):
         from PyQt6.QtGui import QKeySequence
         from PyQt6.QtWidgets import QApplication
         if (event.type() == QEvent.Type.KeyPress and 
-            source is self.view.list_files and 
+            (source is self.view.list_files or source is self.view.tree_explorador) and 
             event.matches(QKeySequence.StandardKey.Copy)):
-            item = self.view.list_files.currentItem()
-            if item:
-                QApplication.clipboard().setText(item.text())
+            if source is self.view.tree_explorador:
+                indexes = self.view.tree_explorador.selectedIndexes()
+                if indexes:
+                    path = self.view.model_explorador.filePath(indexes[0])
+                    QApplication.clipboard().setText(os.path.basename(path))
+            else:
+                item = self.view.list_files.currentItem()
+                if item:
+                    QApplication.clipboard().setText(item.text())
             return True
         return super().eventFilter(source, event)
 
@@ -878,36 +938,83 @@ class MainWindow(QMainWindow):
         dialog.exec()
 
     def show_context_menu(self, pos):
-        menu = QMenu()
-        open_action = menu.addAction(QIcon.fromTheme("document-open"), "Abrir / Reproducir")
-        add_batch_action = menu.addAction(QIcon.fromTheme("list-add"), "Añadir a cola de renombrado")
-        menu.addSeparator()
-        copy_name_action = menu.addAction(QIcon.fromTheme("edit-copy"), "Copiar nombre")
-        menu.addSeparator()
-        # --- NUEVO: Acción de Papelera ---
-        delete_action = menu.addAction(QIcon.fromTheme("user-trash"), "Mover a la papelera")
-        
-        action = menu.exec(self.view.list_files.mapToGlobal(pos))
-        
-        if action == open_action:
-            item = self.view.list_files.itemAt(pos)
-            if item: self.on_item_double_clicked(item)
-        elif action == add_batch_action:
-            items = self.view.list_files.selectedItems()
-            added = False
-            for item in items:
-                name = item.text()
-                file_info = next((f for f in self.engine.files_state if f['current'] == name), None)
-                if file_info and not any(b['current'] == name for b in self.engine.batch_state):
-                    self.engine.batch_state.append(file_info.copy())
-                    added = True
-            if added: self.update_preview()
-        elif action == copy_name_action:
-            item = self.view.list_files.itemAt(pos)
-            if item: QApplication.clipboard().setText(item.text())
-        elif action == delete_action:
-            item = self.view.list_files.itemAt(pos)
-            if item: self.on_delete_file(item)
+        sender = self.sender()
+        if sender == self.view.tree_explorador:
+            indexes = self.view.tree_explorador.selectedIndexes()
+            if not indexes:
+                return
+            index = indexes[0]
+            ruta_absoluta = self.view.model_explorador.filePath(index)
+            if os.path.isdir(ruta_absoluta):
+                return # No context menu for directories
+                
+            menu = QMenu()
+            open_action = menu.addAction(QIcon.fromTheme("document-open"), "Abrir / Reproducir")
+            add_batch_action = menu.addAction(QIcon.fromTheme("list-add"), "Añadir a cola de renombrado")
+            menu.addSeparator()
+            copy_name_action = menu.addAction(QIcon.fromTheme("edit-copy"), "Copiar nombre")
+            menu.addSeparator()
+            delete_action = menu.addAction(QIcon.fromTheme("user-trash"), "Mover a la papelera")
+            
+            action = menu.exec(self.view.tree_explorador.mapToGlobal(pos))
+            
+            filename = os.path.basename(ruta_absoluta)
+            if action == open_action:
+                self.load_video(ruta_absoluta)
+            elif action == add_batch_action:
+                added = False
+                for idx in self.view.tree_explorador.selectionModel().selectedRows():
+                    path = self.view.model_explorador.filePath(idx)
+                    if os.path.isfile(path):
+                        name = os.path.basename(path)
+                        base, ext = os.path.splitext(name)
+                        file_info = {
+                            'original': name,
+                            'current': name,
+                            'preview': name,
+                            'base': base,
+                            'ext': ext
+                        }
+                        if not any(b['current'] == name for b in self.engine.batch_state):
+                            self.engine.batch_state.append(file_info)
+                            added = True
+                if added:
+                    self.update_preview()
+            elif action == copy_name_action:
+                QApplication.clipboard().setText(filename)
+            elif action == delete_action:
+                self.on_delete_file_from_tree(ruta_absoluta)
+        else:
+            # list_files context menu
+            menu = QMenu()
+            open_action = menu.addAction(QIcon.fromTheme("document-open"), "Abrir / Reproducir")
+            add_batch_action = menu.addAction(QIcon.fromTheme("list-add"), "Añadir a cola de renombrado")
+            menu.addSeparator()
+            copy_name_action = menu.addAction(QIcon.fromTheme("edit-copy"), "Copiar nombre")
+            menu.addSeparator()
+            delete_action = menu.addAction(QIcon.fromTheme("user-trash"), "Mover a la papelera")
+            
+            action = menu.exec(self.view.list_files.mapToGlobal(pos))
+            
+            if action == open_action:
+                item = self.view.list_files.itemAt(pos)
+                if item: self.on_item_double_clicked(item)
+            elif action == add_batch_action:
+                items = self.view.list_files.selectedItems()
+                added = False
+                for item in items:
+                    name = item.text()
+                    file_info = next((f for f in self.engine.files_state if f['current'] == name), None)
+                    if file_info and not any(b['current'] == name for b in self.engine.batch_state):
+                        self.engine.batch_state.append(file_info.copy())
+                        added = True
+                if added: self.update_preview()
+            elif action == copy_name_action:
+                item = self.view.list_files.itemAt(pos)
+                if item: QApplication.clipboard().setText(item.text())
+            elif action == delete_action:
+                item = self.view.list_files.itemAt(pos)
+                if item: self.on_delete_file(item)
 
     def on_delete_file(self, item):
         import os
@@ -953,6 +1060,109 @@ class MainWindow(QMainWindow):
         self.refresh_ui_list()
         self.update_preview()
         self.view.status_bar.showMessage("Lista de archivos vaciada.", 3000)
+
+    def on_elemento_explorador_clicked(self, index):
+        ruta_absoluta = self.view.model_explorador.filePath(index)
+        if os.path.isfile(ruta_absoluta):
+            self.load_video(ruta_absoluta)
+            filename = os.path.basename(ruta_absoluta)
+            base_name, ext = os.path.splitext(filename)
+            self.view.edit_name.setText(base_name)
+            
+            # Guardamos nombre base y extensión para la validación anticolisión
+            self.nombre_base_actual = base_name
+            self.extension_video_actual = ext
+            # Reiniciamos estilo por si venía de un error previo
+            self.view.edit_name.setStyleSheet("")
+            
+            # Ajustamos el directorio activo del motor a la carpeta del archivo
+            dir_name = os.path.dirname(ruta_absoluta)
+            self.engine.directory = dir_name
+
+
+
+    def ejecutar_importacion(self):
+        from PyQt6.QtWidgets import QFileDialog
+        ruta, _ = QFileDialog.getOpenFileName(
+            self, "Importar y Fusionar Diccionario", QDir.homePath(),
+            "Archivos de texto (*.txt);;Todos los archivos (*)",
+            options=QFileDialog.Option.DontUseNativeDialog
+        )
+        if ruta:
+            if self.engine.importar_y_fusionar(ruta):
+                self.update_completer_suggestions()
+                QMessageBox.information(self, "Importación", "Diccionario importado y fusionado correctamente sin duplicados.")
+            else:
+                QMessageBox.critical(self, "Error", "No se pudo importar o procesar el diccionario seleccionado.")
+
+    def ejecutar_exportacion(self):
+        from PyQt6.QtWidgets import QFileDialog
+        ruta, _ = QFileDialog.getSaveFileName(
+            self, "Exportar Diccionario Activo", QDir.homePath(),
+            "Archivos de texto (*.txt);;Todos los archivos (*)",
+            options=QFileDialog.Option.DontUseNativeDialog
+        )
+        if ruta:
+            if not ruta.lower().endswith(".txt"):
+                ruta += ".txt"
+            if self.engine.exportar_diccionario(ruta):
+                QMessageBox.information(self, "Exportación", f"Diccionario exportado correctamente a:\n{ruta}")
+            else:
+                QMessageBox.critical(self, "Error", "No se pudo exportar el diccionario.")
+
+    def abrir_editor_sistema_nativo(self):
+        import subprocess
+        try:
+            subprocess.Popen(["xdg-open", self.engine.ruta_diccionario])
+            self.view.status_bar.showMessage("Abriendo diccionario en el editor del sistema...", 4000)
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"No se pudo abrir el editor nativo: {e}")
+
+    def abrir_enlace_kofi(self):
+        from PyQt6.QtGui import QDesktopServices
+        from PyQt6.QtCore import QUrl
+        QDesktopServices.openUrl(QUrl("https://ko-fi.com/reylag"))
+        self.view.status_bar.showMessage("¡Gracias por apoyar a ReyLag! ❤️", 5000)
+
+    def on_delete_file_from_tree(self, ruta_completa):
+        from PyQt6.QtCore import QFile
+        file_name = os.path.basename(ruta_completa)
+        
+        reply = QMessageBox.question(
+            self, 
+            "Confirmar Borrado", 
+            f"¿Estás seguro de que deseas enviar este archivo a la papelera?\n\n{file_name}",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            self.view.media_player.stop()
+            self.view.media_player.setSource(QUrl())
+            
+            if QFile.moveToTrash(ruta_completa):
+                self.view.status_bar.showMessage(f"Enviado a la papelera: {file_name}", 5000)
+            else:
+                QMessageBox.critical(self, "Error", f"No se pudo mover el archivo a la papelera.\nVerifica los permisos de: {ruta_completa}")
+
+    def go_to_next_tree_item(self):
+        indexes = self.view.tree_explorador.selectedIndexes()
+        if not indexes:
+            return
+        
+        current_index = indexes[0]
+        parent_index = current_index.parent()
+        row = current_index.row()
+        model = self.view.model_explorador
+        
+        row_count = model.rowCount(parent_index)
+        for r in range(row + 1, row_count):
+            next_index = model.index(r, 0, parent_index)
+            path = model.filePath(next_index)
+            if os.path.isfile(path) and path.lower().endswith(self.engine.video_extensions):
+                self.view.tree_explorador.setCurrentIndex(next_index)
+                self.on_elemento_explorador_clicked(next_index)
+                return
 
 if __name__ == "__main__":
     # La aplicación debe crearse ANTES que el Splash para inicializar el motor gráfico

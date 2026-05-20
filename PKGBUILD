@@ -1,10 +1,10 @@
 # Maintainer: Antonio Jose Lage Rey (Tony) <tony@reylag.studio>
 pkgname=reylag-rename-studio
-pkgver=2.0.0
+pkgver=2.0.1
 pkgrel=1
 pkgdesc="Herramienta profesional de renombrado de video con visor integrado multimedia, optimizada para entornos Linux."
 arch=('x86_64')
-url="https://github.com/tonylage/reylag-rename-studio"
+url="https://github.com/Alager27/reylag-rename-studio"
 license=('GPL3')
 depends=('python' 'qt6-multimedia' 'qt6-base' 'ffmpeg')
 provides=('reylag-rename-studio')
