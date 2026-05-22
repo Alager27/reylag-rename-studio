@@ -12,7 +12,7 @@ def resource_path(relative_path):
     return os.path.join(base_path, relative_path)
 
 # --- CONFIGURACIÓN DE ENTORNO REYLAG STUDIO ---
-os.environ["QT_QPA_PLATFORMTHEME"] = "kde"  # Fuerza a Qt6 a integrarse con el panel de control y tema de KDE
+# os.environ["QT_QPA_PLATFORMTHEME"] = "kde"  # Fuerza a Qt6 a integrarse con el panel de control y tema de KDE
 # Silenciar la búsqueda de drivers de Nvidia (VDPAU)
 os.environ["VDPAU_DRIVER"] = "none"
 
@@ -306,9 +306,14 @@ class MainWindow(QMainWindow):
         super().closeEvent(event)
 
     def on_open_directory(self):
-        # 1. Abre la ventana nativa para que elijas la carpeta principal
+        # FUERZA el diálogo de Qt y evita el de KDE/KIO
         from PyQt6.QtWidgets import QFileDialog
-        carpeta = QFileDialog.getExistingDirectory(self, "Seleccionar Carpeta de Trabajo")
+        carpeta = QFileDialog.getExistingDirectory(
+            self, 
+            "Seleccionar Carpeta de Trabajo", 
+            "",
+            QFileDialog.Option.DontUseNativeDialog
+        )
         
         if carpeta:
             # 2. Le decimos al modelo de datos que analice esa ruta
