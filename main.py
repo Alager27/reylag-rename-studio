@@ -76,7 +76,7 @@ class ReyLagSplash(QSplashScreen):
         
         painter.setFont(QFont("sans-serif", 14, QFont.Weight.Medium))
         painter.setPen(QColor("#888888"))
-        painter.drawText(0, 150, 500, 30, Qt.AlignmentFlag.AlignCenter, "Versión 2.0.0")
+        painter.drawText(0, 150, 500, 30, Qt.AlignmentFlag.AlignCenter, "Versión 2.1.4")
 
         # Subtítulo de carga
         painter.setPen(QColor("white"))
@@ -510,7 +510,8 @@ class MainWindow(QMainWindow):
                 self.view.edit_name.setStyleSheet("")
                 return
             # 5. Evaluamos colisión contra diccionario y disco
-            duplicado_diccionario = texto_limpio in self.engine.diccionario
+            texto_limpio_lower = texto_limpio.lower()
+            duplicado_diccionario = any(texto_limpio_lower == p.lower() for p in self.engine.diccionario)
             duplicado_disco = self.engine.nombre_ya_existe_en_disco(texto_limpio, ext_actual)
             if duplicado_diccionario or duplicado_disco:
                 self.view.edit_name.setStyleSheet("color: #ff4444; font-weight: bold; background-color: #2a1a1a;")

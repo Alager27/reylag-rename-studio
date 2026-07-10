@@ -5,7 +5,7 @@ a = Analysis(
     ['main.py'],
     pathex=[],
     binaries=[],
-    datas=[('diccionario_por_defecto.txt', '.'), ('reylag_icon.png', '.')],
+    datas=[('diccionario_completo.txt', '.'), ('reylag_icon.png', '.')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

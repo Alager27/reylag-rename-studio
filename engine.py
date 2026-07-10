@@ -6,7 +6,16 @@ import re
 import json
 import shutil
 import tempfile
+import sys
 from datetime import datetime
+
+def resource_path(relative_path):
+    """Obtiene la ruta absoluta del recurso, compatible con PyInstaller y código fuente."""
+    try:
+        base_path = sys._MEIPASS
+    except Exception:
+        base_path = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(base_path, relative_path)
 
 class RenamerEngine:
     """
@@ -35,10 +44,8 @@ class RenamerEngine:
             if not os.path.exists(self.ruta_config_dir):
                 os.makedirs(self.ruta_config_dir, exist_ok=True)
             
-            # Si no existe el personalizado, intentamos copiar diccionario_por_defecto.txt si existe al lado de este archivo,
-            # de lo contrario creamos uno base inicial genérico
+            default_dic = resource_path("diccionario_completo.txt")
             if not os.path.exists(self.ruta_diccionario):
-                default_dic = os.path.join(os.path.dirname(os.path.abspath(__file__)), "diccionario_por_defecto.txt")
                 if os.path.exists(default_dic):
                     try:
                         shutil.copy2(default_dic, self.ruta_diccionario)
@@ -50,13 +57,28 @@ class RenamerEngine:
                     base_inicial = ["Toma_01", "Entrevista", "B_Roll", "Plano_General", "Recurso"]
                     self.guardar_diccionario_ordenado(base_inicial)
             else:
+                # El diccionario ya existe. Cargarlo y fusionar automáticamente cualquier palabra nueva del archivo por defecto.
                 self.cargar_diccionario()
+                if os.path.exists(default_dic):
+                    lineas_defecto = self._leer_archivo_diccionario(default_dic)
+                    fusion = list(set(self.diccionario) | set(lineas_defecto))
+                    if len(fusion) > len(self.diccionario):
+                        self.guardar_diccionario_ordenado(fusion)
         except Exception as e:
             print(f"Error de permisos al inicializar diccionario: {e}")
 
     def natural_sort_key(self, s):
         """Clave de ordenamiento natural: identifica números dentro de cadenas de texto."""
         return [int(text) if text.isdigit() else text.lower() for text in re.split(r'(\d+)', s)]
+
+    def _deduplicar_case_insensitive(self, lista):
+        resultado = []
+        vistos = set()
+        for palabra in lista:
+            if palabra.lower() not in vistos:
+                vistos.add(palabra.lower())
+                resultado.append(palabra)
+        return resultado
 
     def _leer_archivo_diccionario(self, ruta):
         if not os.path.exists(ruta):
@@ -92,12 +114,12 @@ class RenamerEngine:
     def cargar_diccionario(self):
         """Carga el diccionario activo ordenándolo de forma natural y sin duplicados."""
         lineas = self._leer_archivo_diccionario(self.ruta_diccionario)
-        self.diccionario = sorted(list(dict.fromkeys(lineas)), key=self.natural_sort_key)
+        self.diccionario = sorted(self._deduplicar_case_insensitive(lineas), key=self.natural_sort_key)
 
     def guardar_diccionario_ordenado(self, lista_palabras):
         """Escribe los cambios físicamente en el diccionario personalizado."""
         palabras = [p.strip() for p in lista_palabras if isinstance(p, str) and p.strip() and not p.strip().startswith('#')]
-        self.diccionario = sorted(list(dict.fromkeys(palabras)), key=self.natural_sort_key)
+        self.diccionario = sorted(self._deduplicar_case_insensitive(palabras), key=self.natural_sort_key)
 
         try:
             os.makedirs(os.path.dirname(self.ruta_diccionario), exist_ok=True)
@@ -111,8 +133,9 @@ class RenamerEngine:
 
     def agregar_palabra_al_vuelo(self, palabra):
         """Añade una nueva palabra desde la caja de texto conservando tu personalización."""
-        if palabra.strip() and palabra not in self.diccionario:
-            self.diccionario.append(palabra.strip())
+        p = palabra.strip()
+        if p and p.lower() not in [x.lower() for x in self.diccionario]:
+            self.diccionario.append(p)
             self.guardar_diccionario_ordenado(self.diccionario)
 
     # --- NUEVO: Funciones de Fusión del Menú Superior ---

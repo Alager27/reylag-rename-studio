@@ -1,0 +1,10 @@
+__pycache__/
+build/
+dist/
+pkg/
+src/
+*.pkg.tar.zst
+*.log
+*.pyc
+diccionario/
+reylag-rename-studio/
