@@ -6,5 +6,5 @@ src/
 *.pkg.tar.zst
 *.log
 *.pyc
-diccionario/
-reylag-rename-studio/
+*backup.txt
+diccionario_por_defecto.txt
