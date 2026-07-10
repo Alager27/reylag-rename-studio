@@ -1,4 +1,4 @@
-# 🎬 ReyLag Rename Studio (V2.0.0)
+# 🎬 ReyLag Rename Studio (V2.1.4)
 
 **ReyLag Rename Studio** es una suite profesional de escritorio diseñada específicamente para editores de vídeo, realizadores audiovisuales y archivistas. Su objetivo es resolver uno de los mayores cuellos de botella en la postproducción: **la visualización, clasificación y renombrado masivo de cientos de clips de vídeo.**
 
