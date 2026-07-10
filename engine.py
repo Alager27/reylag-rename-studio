@@ -3,7 +3,9 @@
 
 import os
 import re
+import json
 import shutil
+import tempfile
 from datetime import datetime
 
 class RenamerEngine:
@@ -56,20 +58,56 @@ class RenamerEngine:
         """Clave de ordenamiento natural: identifica números dentro de cadenas de texto."""
         return [int(text) if text.isdigit() else text.lower() for text in re.split(r'(\d+)', s)]
 
+    def _leer_archivo_diccionario(self, ruta):
+        if not os.path.exists(ruta):
+            return []
+        try:
+            with open(ruta, 'r', encoding='utf-8') as f:
+                contenido = f.read()
+        except Exception as e:
+            print(f"Error al leer diccionario {ruta}: {e}")
+            return []
+
+        if not contenido.strip():
+            return []
+
+        lineas = []
+        contenido_limpio = contenido.strip()
+
+        # Primer intento: cargar como JSON para transicionar de versiones antiguas.
+        if contenido_limpio.startswith('['):
+            try:
+                data = json.loads(contenido_limpio)
+                if isinstance(data, list):
+                    lineas = [str(item).strip() for item in data if str(item).strip() and not str(item).strip().startswith('#')]
+            except json.JSONDecodeError:
+                lineas = []
+
+        # Fallback: cargar líneas de texto plano
+        if not lineas:
+            lineas = [line.strip() for line in contenido.splitlines() if line.strip() and not line.strip().startswith('#')]
+
+        return lineas
+
     def cargar_diccionario(self):
         """Carga el diccionario activo ordenándolo de forma natural y sin duplicados."""
-        if os.path.exists(self.ruta_diccionario):
-            with open(self.ruta_diccionario, 'r', encoding='utf-8') as f:
-                lineas = [l.strip() for l in f if l.strip()]
-            # Eliminar duplicados y aplicar orden natural (1, 2, 10...)
-            self.diccionario = sorted(list(set(lineas)), key=self.natural_sort_key)
+        lineas = self._leer_archivo_diccionario(self.ruta_diccionario)
+        self.diccionario = sorted(list(dict.fromkeys(lineas)), key=self.natural_sort_key)
 
     def guardar_diccionario_ordenado(self, lista_palabras):
         """Escribe los cambios físicamente en el diccionario personalizado."""
-        self.diccionario = sorted(list(set([p.strip() for p in lista_palabras if p.strip()])), key=self.natural_sort_key)
-        with open(self.ruta_diccionario, 'w', encoding='utf-8') as f:
-            for palabra in self.diccionario:
-                f.write(f"{palabra}\n")
+        palabras = [p.strip() for p in lista_palabras if isinstance(p, str) and p.strip() and not p.strip().startswith('#')]
+        self.diccionario = sorted(list(dict.fromkeys(palabras)), key=self.natural_sort_key)
+
+        try:
+            os.makedirs(os.path.dirname(self.ruta_diccionario), exist_ok=True)
+            with tempfile.NamedTemporaryFile('w', encoding='utf-8', delete=False, dir=os.path.dirname(self.ruta_diccionario)) as tmp:
+                for palabra in self.diccionario:
+                    tmp.write(palabra + '\n')
+                temp_path = tmp.name
+            os.replace(temp_path, self.ruta_diccionario)
+        except Exception as e:
+            print(f"Error al guardar diccionario: {e}")
 
     def agregar_palabra_al_vuelo(self, palabra):
         """Añade una nueva palabra desde la caja de texto conservando tu personalización."""
@@ -81,9 +119,7 @@ class RenamerEngine:
     def importar_y_fusionar(self, ruta_externa):
         """Fusiona un diccionario externo con el tuyo. El tuyo mantiene la prioridad."""
         if os.path.exists(ruta_externa):
-            with open(ruta_externa, 'r', encoding='utf-8') as f:
-                lineas_externas = [l.strip() for l in f if l.strip()]
-            
+            lineas_externas = self._leer_archivo_diccionario(ruta_externa)
             # Unión matemática de conjuntos (Evita duplicados)
             fusion = list(set(self.diccionario) | set(lineas_externas))
             self.guardar_diccionario_ordenado(fusion)
@@ -247,10 +283,11 @@ class RenamerEngine:
                 file_info['preview'] = new_base + ext
 
     def execute_renaming(self):
-        """Ejecuta el renombrado masivo sobre el estado BATCH."""
+        """Ejecuta los cambios físicos en disco usando batch_state."""
         success = 0
         errors = []
         current_history = []
+        nuevas_palabras = False
         
         for file_info in self.batch_state:
             old_name = file_info['current']
@@ -277,6 +314,12 @@ class RenamerEngine:
                     'new': new_name
                 })
                 
+                # Añadir al diccionario la nueva palabra
+                nombre_sin_ext = os.path.splitext(new_name)[0].strip()
+                if nombre_sin_ext and nombre_sin_ext not in self.diccionario:
+                    self.diccionario.append(nombre_sin_ext)
+                    nuevas_palabras = True
+                
                 # Actualizar estado interno (en batch y en files_state si existe)
                 file_info['current'] = new_name
                 file_info['original'] = new_name
@@ -291,6 +334,9 @@ class RenamerEngine:
             except Exception as e:
                 errors.append(f"Fallo al renombrar {old_name}: {str(e)}")
         
+        if nuevas_palabras:
+            self.guardar_diccionario_ordenado(self.diccionario)
+
         if current_history:
             self.history.append(current_history)
             self.redo_stack.clear()

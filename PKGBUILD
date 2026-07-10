@@ -1,6 +1,6 @@
 # Maintainer: Antonio Jose Lage Rey (Tony) <tony@reylag.studio>
 pkgname=reylag-rename-studio
-pkgver=2.0.1.2
+pkgver=2.0.0
 pkgrel=1
 pkgdesc="Herramienta profesional de renombrado de video con visor integrado multimedia, optimizada para entornos Linux."
 arch=('x86_64')

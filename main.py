@@ -72,9 +72,14 @@ class ReyLagSplash(QSplashScreen):
         painter.drawRect(0, 0, 499, 299)
         painter.setPen(QColor("white"))
         painter.setFont(QFont("sans-serif", 22, QFont.Weight.Bold))
-        painter.drawText(pix.rect(), Qt.AlignmentFlag.AlignCenter, "ReyLag Rename Studio®")
+        painter.drawText(0, 100, 500, 50, Qt.AlignmentFlag.AlignCenter, "ReyLag Rename Studio®")
         
+        painter.setFont(QFont("sans-serif", 14, QFont.Weight.Medium))
+        painter.setPen(QColor("#888888"))
+        painter.drawText(0, 150, 500, 30, Qt.AlignmentFlag.AlignCenter, "Versión 2.0.0")
+
         # Subtítulo de carga
+        painter.setPen(QColor("white"))
         painter.setFont(QFont("sans-serif", 10))
         painter.drawText(0, 260, 500, 30, Qt.AlignmentFlag.AlignCenter, "Cargando motor multimedia...")
         painter.end()
@@ -296,6 +301,8 @@ class MainWindow(QMainWindow):
         if dialog.exec():  # Si el usuario pulsó "Guardar y Actualizar"
             # 1. Recargar el diccionario en memoria desde el archivo modificado
             self.load_dictionary_from_disk()
+            # Inmediatamente después de cargar, guardar para asegurar que se ordene y sin duplicados
+            self.save_dictionary_to_disk()
             # 2. Refrescar la UI
             self.refresh_ui_list()
             self.view.status_bar.showMessage("✅ Diccionario actualizado y cargado con éxito.", 4000)
